@@ -18,8 +18,8 @@ setuptools.setup(
         'Operating System :: POSIX',
     ],
     install_requires=[
-        'stomp.py',
-        'testcontainers'
+        'stomp.py==8.*',
+        'testcontainers==3.*'
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.8',
 )
