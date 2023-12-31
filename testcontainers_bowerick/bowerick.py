@@ -1,4 +1,4 @@
-# Copyright 2022 Ruediger Gad <r.c.g@gmx.de>
+# Copyright 2022, 2023 Ruediger Gad <r.c.g@gmx.de>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from enum import Enum
 import logging
 import re
 import stomp
@@ -19,9 +20,16 @@ import time
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.waiting_utils import wait_container_is_ready
 
+logger = logging.getLogger(__name__)
+
 SERVER_CERT_FILE='bowerick_testcontainers_server_certificate.pem'
 CLIENT_CERT_FILE='bowerick_testcontainers_client_certificate.pem'
 CLIENT_PRIV_KEY_FILE='bowerick_testcontainers_client_private_key.pem'
+
+class BowerickContainerState(Enum):
+    WAITING = 0
+    READY = 1
+    TIMEOUT = 2
 
 class BowerickContainer(DockerContainer):
     """
@@ -51,9 +59,11 @@ class BowerickContainer(DockerContainer):
             conn.disconnect()
     """
 
-    def __init__(self, image="ruedigergad/bowerick:latest", mom_protocols=None):
-        super(BowerickContainer, self).__init__(image=image)
-
+    def __init__(self, image="ruedigergad/bowerick:latest", mom_protocols=None, max_retries=30, **kwargs):
+        super(BowerickContainer, self).__init__(image=image, **kwargs)
+        logger.info('Creating bowerick container...')
+        self.state = BowerickContainerState.WAITING
+        
         if not mom_protocols:
             mom_protocols = {
                     'tcp': 1031,
@@ -66,22 +76,35 @@ class BowerickContainer(DockerContainer):
                     'wss': 12000
                     }
 
+        self.max_retries = max_retries
         self.mom_protocols = mom_protocols
         if not 'stomp' in self.mom_protocols:
             self.mom_protocols['stomp'] = 2000
-        logging.info(f'Protocols: {self.mom_protocols}')
+        logger.info(f'Protocols: {self.mom_protocols}')
         self.with_exposed_ports(*self.mom_protocols.values())
 
         urls = [f'{k}://0.0.0.0:{v}' for k, v in self.mom_protocols.items()]
         urls_str = ' '.join(urls)
-        logging.info(f'URLS: {urls_str}')
+        logger.info(f'URLS: {urls_str}')
         self.with_env('URLS', urls_str)
 
+    @wait_container_is_ready()
+    def _check_is_ready(self):
+        logger.debug('Checking is_ready...')
+        
+        if self.state is BowerickContainerState.TIMEOUT:
+            raise Exception('Timed out while waiting for bowerick container to get ready.')
+        
+        return self.state is BowerickContainerState.READY
+
     def _wait_ready(self):
-        logging.info('Waiting for bowerick to become ready.')
+        logger.info('While waiting, some warning messages saying, e.g., "... could not connect ...", may show. This is usually normal.')
         ready = [False]
-        while not ready[-1]:
+        retries = 0
+
+        while not ready[-1] and retries < self.max_retries:
             try:
+                logger.debug('Creating test connection. Note, this may fail a few times until the container is ready.')
                 conn = stomp.Connection([('127.0.0.1', self.get_port_for_protocol('stomp'))])
                 conn.connect(wait=True)
                 topic = '/topic/bowerick.testcontainers.is.ready'
@@ -89,17 +112,24 @@ class BowerickContainer(DockerContainer):
                 msg_body = 'wait_container_is_ready'
                 class Listener(stomp.ConnectionListener):
                     def on_message(self, frame):
+                        logger.debug('Received message while waiting: %s', msg_body)
                         if frame.body == msg_body:
+                            logger.info('Received check message.')
                             ready.append(True)
                 conn.set_listener('listener', Listener())
+                logger.debug('Sending test message...')
                 conn.send(body=msg_body, destination=topic)
-                time.sleep(1)
+                logger.debug('Waiting for test message to arrive...')
+                time.sleep(5)
+                logger.debug('Check iteration timed out...')
                 conn.remove_listener('listener')
                 conn.disconnect()
-            except:
-                pass
+            except BaseException as e:
+                logger.debug('Connection attempt failed with: %s, %s', type(e), str(e))
             time.sleep(1)
-        logging.info('Bowerick is ready.')
+            retries += 1
+        
+        return ready[-1]
 
     def _write_cryptography_files(self):
         log = super().get_wrapped_container().logs().decode()
@@ -120,8 +150,18 @@ class BowerickContainer(DockerContainer):
         return super().get_exposed_port(self.mom_protocols[protocol])
 
     def start(self):
+        logger.info('Starting bowerick container...')
         super().start()
-        self._wait_ready()
-        self._write_cryptography_files()
-        return self
 
+        logger.info('Waiting for bowerick container to become ready. This may take some time.')
+        is_ready = self._wait_ready()
+        if is_ready:
+            logger.info('bowerick is ready.')
+            logger.info('Processing bowerick container cryptography files...')
+            self._write_cryptography_files()
+            self.state = BowerickContainerState.READY
+        else:
+            logger.error('Timed out while waiting for bowerick to get ready.')
+            self.state = BowerickContainerState.TIMEOUT
+        
+        return self
