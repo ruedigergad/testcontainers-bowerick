@@ -15,18 +15,19 @@
 # limitations under the License.
 
 import stomp
-from testcontainers_bowerick.bowerick import BowerickContainer
+from testcontainers_bowerick.bowerick import BowerickContainer, Protocols
 import time
 
 class Listener(stomp.ConnectionListener):
     def on_message(self, frame):
-        print(frame.body)
+        print('Received message body:', frame.body)
 
 with BowerickContainer() as container:
-    conn = stomp.Connection([('127.0.0.1', container.get_port_for_protocol('stomp'))])
+    conn = stomp.Connection([('127.0.0.1', container.get_port_for_protocol(Protocols.STOMP))])
     conn.connect(wait=True)
     conn.subscribe('/topic/foo', 1)
     conn.set_listener('listener', Listener())
     time.sleep(1)
     conn.send(body='bar', destination='/topic/foo')
+    time.sleep(1)
     conn.disconnect()
