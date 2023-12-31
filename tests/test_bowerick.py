@@ -21,8 +21,8 @@ from threading import Semaphore
 import time
 import unittest
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler()])
+logger = logging.getLogger(__name__)
 
 class BowerickTestcontainerTests(unittest.TestCase):
 
@@ -39,7 +39,7 @@ class BowerickTestcontainerTests(unittest.TestCase):
 
         with bowerick.BowerickContainer() as container:
             address = [('127.0.0.1', container.get_port_for_protocol('stomp'))]
-            logging.info(f'Connecting to: {address}')
+            logger.info(f'Connecting to: {address}')
             conn = stomp.Connection(address)
             conn.connect(wait=True)
             conn.subscribe('/topic/bowerick.message.generator', 1)
@@ -67,7 +67,7 @@ class BowerickTestcontainerTests(unittest.TestCase):
 
         with bowerick.BowerickContainer() as container:
             address = [('127.0.0.1', container.get_port_for_protocol('stomp'))]
-            logging.info(f'Connecting to: {address}')
+            logger.info(f'Connecting to: {address}')
             conn = stomp.Connection(address)
             conn.connect(wait=True)
             conn.subscribe(topic, 1)
@@ -96,7 +96,7 @@ class BowerickTestcontainerTests(unittest.TestCase):
 
         with bowerick.BowerickContainer() as container:
             address = [('127.0.0.1', container.get_port_for_protocol('stomp+ssl'))]
-            logging.info(f'Connecting to: {address}')
+            logger.info(f'Connecting to: {address}')
             conn = stomp.Connection(address)
             stomp.transport.DEFAULT_SSL_VERSION=ssl.PROTOCOL_TLS_CLIENT
             conn.set_ssl(
