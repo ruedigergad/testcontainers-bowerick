@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from enum import Enum
+from aenum import Enum
 import logging
 import re
 import stomp
@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 SERVER_CERT_FILE='bowerick_testcontainers_server_certificate.pem'
 CLIENT_CERT_FILE='bowerick_testcontainers_client_certificate.pem'
 CLIENT_PRIV_KEY_FILE='bowerick_testcontainers_client_private_key.pem'
+
+class Protocols(str, Enum):
+    _init_ = 'value __doc__'
+    TCP = 'tcp', 'Unencrypted OpenWire, the default protocol of ActiveMQ.'
+    MQTT = 'mqtt', 'Unencrypted MQTT'
+    WS = 'ws', 'Unencrypted STOMP via WebSockets'
+    STOMP = 'stomp', "Unencrypted STOMP"
+    SSL = 'ssl', 'Encrypted OpenWire'
+    STOMP_SSL = 'stomp+ssl', 'Encrypted STOMP'
+    MQTT_SSL = 'mqtt+ssl', 'Encrypted MQTT'
+    WSS = 'wss', 'Encrypted STOMP via WebSockets'
 
 class BowerickContainerState(Enum):
     WAITING = 0
@@ -42,7 +53,7 @@ class BowerickContainer(DockerContainer):
     ::
 
         import stomp
-        from testcontainers_bowerick.bowerick import BowerickContainer
+        from testcontainers_bowerick.bowerick import BowerickContainer, Protocols
         import time
 
         class Listener(stomp.ConnectionListener):
@@ -50,7 +61,7 @@ class BowerickContainer(DockerContainer):
                 print(frame.body)
 
         with BowerickContainer() as container:
-            conn = stomp.Connection([('127.0.0.1', container.get_port_for_protocol('stomp'))])
+            conn = stomp.Connection([('127.0.0.1', container.get_port_for_protocol(Protocols.STOMP))])
             conn.connect(wait=True)
             conn.subscribe('/topic/foo', 1)
             conn.set_listener('listener', Listener())
@@ -66,24 +77,24 @@ class BowerickContainer(DockerContainer):
         
         if not mom_protocols:
             mom_protocols = {
-                    'tcp': 1031,
-                    'mqtt': 1701,
-                    'ws': 1864,
-                    'stomp': 2000,
-                    'ssl': 11031,
-                    'stomp+ssl': 11701,
-                    'mqtt+ssl': 11864,
-                    'wss': 12000
+                    Protocols.TCP: 1031,
+                    Protocols.MQTT: 1701,
+                    Protocols.WS: 1864,
+                    Protocols.STOMP: 2000,
+                    Protocols.SSL: 11031,
+                    Protocols.STOMP_SSL: 11701,
+                    Protocols.MQTT_SSL: 11864,
+                    Protocols.WSS: 12000
                     }
 
         self.max_retries = max_retries
         self.mom_protocols = mom_protocols
-        if not 'stomp' in self.mom_protocols:
-            self.mom_protocols['stomp'] = 2000
+        if not Protocols.STOMP in self.mom_protocols:
+            self.mom_protocols[Protocols.STOMP] = 2000
         logger.info(f'Protocols: {self.mom_protocols}')
         self.with_exposed_ports(*self.mom_protocols.values())
 
-        urls = [f'{k}://0.0.0.0:{v}' for k, v in self.mom_protocols.items()]
+        urls = [f'{k.value}://0.0.0.0:{v}' for k, v in self.mom_protocols.items()]
         urls_str = ' '.join(urls)
         logger.info(f'URLS: {urls_str}')
         self.with_env('URLS', urls_str)
@@ -105,7 +116,7 @@ class BowerickContainer(DockerContainer):
         while not ready[-1] and retries < self.max_retries:
             try:
                 logger.debug('Creating test connection. Note, this may fail a few times until the container is ready.')
-                conn = stomp.Connection([('127.0.0.1', self.get_port_for_protocol('stomp'))])
+                conn = stomp.Connection([('127.0.0.1', self.get_port_for_protocol(Protocols.STOMP))])
                 conn.connect(wait=True)
                 topic = '/topic/bowerick.testcontainers.is.ready'
                 conn.subscribe(topic, 1)
@@ -144,7 +155,7 @@ class BowerickContainer(DockerContainer):
         with open(CLIENT_PRIV_KEY_FILE, 'w') as f:
             f.write(private_keys[0])
 
-    def get_port_for_protocol(self, protocol):
+    def get_port_for_protocol(self, protocol: Protocols):
         if not protocol or not protocol in self.mom_protocols:
             raise RuntimeError(f'No matching protocol "{protocol}" defined for container. Available protocols are: {self.mom_protocols}')
         return super().get_exposed_port(self.mom_protocols[protocol])

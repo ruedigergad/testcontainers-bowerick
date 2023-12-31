@@ -18,6 +18,7 @@ setuptools.setup(
         'Operating System :: POSIX',
     ],
     install_requires=[
+        'aenum==3.*',
         'stomp.py==8.*',
         'testcontainers==3.*'
     ],
