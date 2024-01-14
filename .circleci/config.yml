@@ -1,0 +1,24 @@
+version: 2.1
+
+orbs:
+  coveralls: coveralls/coveralls@2.2.1
+  python: circleci/python@2.1.1
+
+jobs:
+  run_tests_job:
+    working_directory: ~/testcontainers-bowerick
+    machine:
+      image: ubuntu-2204:2023.10.1
+      # https://circleci.com/developer/machine/image/ubuntu-2204
+    environment: {}
+    steps:
+      - checkout
+      - run: 'pip3 install -e .[dev]'
+      - run: 'coverage run --source=testcontainers_bowerick/ -m unittest'
+      - coveralls/upload
+
+workflows:
+  run_tests:
+    jobs:
+      - run_tests_job
+
