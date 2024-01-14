@@ -22,5 +22,8 @@ setuptools.setup(
         'stomp.py==8.*',
         'testcontainers==3.*'
     ],
+    extras_require={
+        "dev": "coveralls==3.*"
+    },
     python_requires='>=3.8',
 )
